@@ -139,6 +139,43 @@ sub ed25519_verify {
   return system($command) == 0 ? 1 : 0;
 }
 
+sub failure_message {
+  my ($raw, $fallback) = @_;
+  my $payload = eval { JSON::PP->new->utf8(0)->decode($raw) };
+  my $message = ref($payload) eq "HASH" ? $payload->{error}{message} : undef;
+  return (defined $message && $message ne "") ? $message : $fallback;
+}
+
+sub heartbeat {
+  my ($license, $installation, $api, $app_id) = @_;
+  open my $random, "<", "/dev/urandom" or die "urandom\n";
+  read $random, my $bytes, 24 or die "urandom\n";
+  close $random;
+  my $nonce = encode_base64($bytes, "");
+  $nonce =~ tr{+/}{-_};
+  $nonce =~ s/=+\z//;
+  my $fingerprint = sha256_hex("kernauth-device-v1:$installation");
+  my $body = $json->encode({
+    protocol_version => 1, public_app_id => $app_id, client_version => "1.0.0", license_key => $license,
+    fingerprint_version => 1, device_fingerprint => $fingerprint, installation_id => $installation, nonce => $nonce,
+  });
+  my $dir = tempdir(CLEANUP => 1);
+  open my $out, ">", "$dir/body" or die $!;
+  print {$out} $body;
+  close $out;
+  open my $response, "-|", "curl", "-sS", "-w", "\n%{http_code}", "-X", "POST", "-H", "content-type: application/json",
+    "--data-binary", "\@$dir/body", "$api/v1/client/heartbeat" or die "curl\n";
+  local $/;
+  my $raw = <$response>;
+  close $response;
+  die "heartbeat failed\n" if $? != 0 || !defined $raw;
+  $raw =~ s/\n(\d{3})\z// or die "heartbeat failed\n";
+  my $status = $1;
+  die failure_message($raw, "heartbeat failed ($status)") . "\n" if $status !~ /\A2/;
+  my $payload = JSON::PP->new->utf8(0)->decode($raw);
+  die "heartbeat failed\n" unless ref($payload) eq "HASH" && $payload->{ok};
+}
+
 sub request {
   my ($mode, $license, $installation, $api, $app_id, $public_key) = @_;
   open my $random, "<", "/dev/urandom" or die "urandom\n";
@@ -164,7 +201,7 @@ sub request {
   die "$mode failed\n" if $? != 0 || !defined $raw;
   $raw =~ s/\n(\d{3})\z// or die "$mode failed\n";
   my $status = $1;
-  die "$mode failed ($status)\n" if $status !~ /\A2/;
+  die failure_message($raw, "$mode failed ($status)") . "\n" if $status !~ /\A2/;
   my $grant = JSON::PP->new->utf8(0)->decode($raw);
   die "Invalid or expired signed entitlement\n" unless verify_grant($grant, $nonce, $app_id, $public_key);
   return $grant->{entitlement};
@@ -208,12 +245,23 @@ sub machine_hwid {
 
 unless (caller) {
   my $app = KernAuth->new();
-  die $app->{message} . "\n" unless $app->validate(license_key(), installation_id());
+  my $key = license_key();
+  my $hwid = installation_id();
+  die $app->{message} . "\n" unless $app->validate($key, $hwid);
   my $ent = $app->{entitlement};
   print "Status: $ent->{status}\n";
   print "Features: $ent->{features}\n";
   print "License: $ent->{license_id}\n";
   print "Check expires: $ent->{expires_at}\n";
+  while (1) {
+    sleep 60;
+    eval { heartbeat($key, $hwid, $app->{api}, $app->{app_id}); 1 } or do {
+      my $error = $@ || "heartbeat failed";
+      $error =~ s/\n\z//;
+      print "$error\n";
+      exit 1;
+    };
+  }
 }
 
 1;
