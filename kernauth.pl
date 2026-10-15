@@ -187,21 +187,26 @@ sub installation_id {
   my $env = $ENV{KERN_INSTALLATION_ID} // "";
   $env =~ s/^\s+|\s+$//g;
   return $env if $env ne "";
-  if (open my $in, "<", "kernauth-install") {
-    local $/;
-    my $saved = <$in> // "";
-    close $in;
-    $saved =~ s/^\s+|\s+$//g;
-    return $saved if $saved ne "";
+  my $hwid = machine_hwid();
+  $hwid =~ s/^\s+|\s+$//g;
+  return $hwid if $hwid =~ /^[A-Za-z0-9_-]{8,64}$/;
+  die "Could not read the HWID\n";
+}
+
+sub machine_hwid {
+  if ($^O eq "MSWin32") {
+    my $raw = `powershell.exe -NoProfile -Command "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value"`;
+    return $raw // "";
   }
-  open my $random, "<", "/dev/urandom" or die "urandom\n";
-  read $random, my $bytes, 16 or die "urandom\n";
-  close $random;
-  my $saved = unpack("H*", $bytes);
-  open my $out, ">", "kernauth-install" or die "Could not save the installation id\n";
-  print {$out} "$saved\n";
-  close $out;
-  return $saved;
+  if ($^O eq "darwin") {
+    my $raw = `ioreg -rd1 -c IOPlatformExpertDevice`;
+    return $1 if defined $raw && $raw =~ /"IOPlatformUUID" = "([^"]+)"/;
+    return "";
+  }
+  open my $in, "<", "/etc/machine-id" or return "";
+  my $raw = <$in> // "";
+  close $in;
+  return $raw;
 }
 
 unless (caller) {
