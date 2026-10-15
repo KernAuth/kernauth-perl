@@ -47,6 +47,7 @@ sub call {
   }
   $self->{success} = 1;
   $self->{message} = $ok_message;
+  $entitlement->{features} = main::canonical_features($entitlement->{features});
   $self->{entitlement} = $entitlement;
   return 1;
 }
@@ -208,7 +209,7 @@ unless (caller) {
   die $app->{message} . "\n" unless $app->validate(license_key(), installation_id());
   my $ent = $app->{entitlement};
   print "Status: $ent->{status}\n";
-  print "Features: ", canonical_features($ent->{features}), "\n";
+  print "Features: $ent->{features}\n";
   print "License: $ent->{license_id}\n";
   print "Check expires: $ent->{expires_at}\n";
 }
