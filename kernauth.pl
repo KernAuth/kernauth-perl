@@ -24,6 +24,7 @@ sub new {
     public_key => $public_key // $main::PUBLIC_KEY,
     success => 0,
     message => "",
+    entitlement => undef,
   }, $class;
 }
 
@@ -34,18 +35,19 @@ sub validate {
 
 sub call {
   my ($self, $mode, $license, $installation, $ok_message) = @_;
-  my $error = eval {
+  my $entitlement = eval {
     main::request($mode, $license, $installation, $self->{api}, $self->{app_id}, $self->{key_id}, $self->{public_key});
-    1;
-  } ? undef : ($@ || "request failed");
-  if ($error) {
+  };
+  if ($@) {
     $self->{success} = 0;
-    $self->{message} = $error;
+    $self->{message} = $@ || "request failed";
     $self->{message} =~ s/\s+\z//;
+    $self->{entitlement} = undef;
     return 0;
   }
   $self->{success} = 1;
   $self->{message} = $ok_message;
+  $self->{entitlement} = $entitlement;
   return 1;
 }
 
@@ -167,14 +169,48 @@ sub request {
   die "$mode failed ($status)\n" if $status !~ /\A2/;
   my $grant = JSON::PP->new->utf8(0)->decode($raw);
   die "Invalid or expired signed entitlement\n" unless verify_grant($grant, $nonce, $app_id, $key_id, $public_key);
+  return $grant->{entitlement};
+}
+
+sub license_key {
+  my $env = $ENV{KERN_LICENSE_KEY} // "";
+  $env =~ s/^\s+|\s+$//g;
+  return $env if $env ne "";
+  print "Enter license: " if -t STDIN;
+  my $line = <STDIN> // "";
+  $line =~ s/^\s+|\s+$//g;
+  return $line;
+}
+
+sub installation_id {
+  my $env = $ENV{KERN_INSTALLATION_ID} // "";
+  $env =~ s/^\s+|\s+$//g;
+  return $env if $env ne "";
+  if (open my $in, "<", "kernauth-install") {
+    local $/;
+    my $saved = <$in> // "";
+    close $in;
+    $saved =~ s/^\s+|\s+$//g;
+    return $saved if $saved ne "";
+  }
+  open my $random, "<", "/dev/urandom" or die "urandom\n";
+  read $random, my $bytes, 16 or die "urandom\n";
+  close $random;
+  my $saved = unpack("H*", $bytes);
+  open my $out, ">", "kernauth-install" or die "Could not save the installation id\n";
+  print {$out} "$saved\n";
+  close $out;
+  return $saved;
 }
 
 unless (caller) {
-  my $license = $ENV{KERN_LICENSE_KEY} // die "Set KERN_LICENSE_KEY and KERN_INSTALLATION_ID\n";
-  my $installation = $ENV{KERN_INSTALLATION_ID} // die "Set KERN_LICENSE_KEY and KERN_INSTALLATION_ID\n";
   my $app = KernAuth->new();
-  die $app->{message} . "\n" unless $app->validate($license, $installation);
-  print $app->{message}, "\n";
+  die $app->{message} . "\n" unless $app->validate(license_key(), installation_id());
+  my $ent = $app->{entitlement};
+  print "Status: $ent->{status}\n";
+  print "Features: ", canonical_features($ent->{features}), "\n";
+  print "License: $ent->{license_id}\n";
+  print "Check expires: $ent->{expires_at}\n";
 }
 
 1;
