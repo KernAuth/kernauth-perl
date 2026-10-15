@@ -1,34 +1,20 @@
 # KernAuth Perl example
 
-Paste the public app ID and public key from Developers into `kernauth.pl`. Perl 5.14 or newer. The core has no HTTPS client, so this file uses curl for the request and the openssl command for the signature.
+Paste the public app ID from Developers into `main.pl`. Perl 5.14 or newer. The core has no HTTPS client, so the library uses curl.
 
-## Instance
-
-```perl
-my $app = KernAuth->new(
-  "https://api.kernauth.com",
-  "__PUBLIC_APP_ID__",
-  "__PUBLIC_KEY__",
-);
-```
-
-## Validate
+## Start
 
 ```perl
-die $app->{message} unless $app->validate($license, $installation);
-print "Status: $app->{entitlement}{status}\n";
-print "Features: $app->{entitlement}{features}\n";
-print "License: $app->{entitlement}{license_id}\n";
-print "Check expires: $app->{entitlement}{expires_at}\n";
+my $app = KernAuth->new("https://api.kernauth.com", "__PUBLIC_APP_ID__");
 ```
 
-A good check prints the status, the feature flags stored on the license, the license id, and when this check expires. Type the license key at the prompt. `KERN_LICENSE_KEY` skips the prompt. The program reads the HWID from the computer. On Windows that is the signed-in user's SID. `KERN_INSTALLATION_ID` overrides that HWID. The program then asks the server again every minute. If the session was ended, the key was paused, or this computer is blocked, it prints that message and exits.
+Type the license at the prompt. `KERN_LICENSE_KEY` skips the prompt. The program checks that the key is valid and prints when it expires. It does not save a computer.
 
 ## Run
 
 ```
 perl test_kernauth.pl
-perl kernauth.pl
+perl main.pl
 ```
 
 A modified program can still skip the check.

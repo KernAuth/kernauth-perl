@@ -1,27 +1,12 @@
 use strict;
 use warnings;
-use JSON::PP ();
-require "./kernauth.pl";
+use FindBin;
+use lib $FindBin::Bin;
+use KernAuth;
 
-my $parser = JSON::PP->new->utf8;
-my $fixture = $parser->decode(do {
-  local $/;
-  open my $handle, "<", "vectors.json" or die $!;
-  <$handle>;
-});
-my $now = main::instant_ms("2026-01-01T00:01:00.000Z");
-for my $vector (@{$fixture->{vectors}}) {
-  my $ent = $vector->{fields};
-  my $grant = { entitlement => $ent, signature => $vector->{signature} };
-  my $canonical = main::canonical($ent);
-  die "$vector->{name} canonical\n" if $canonical ne $vector->{canonical};
-  my $args = [$ent->{nonce}, $ent->{application_id}, $vector->{public_key}, $now];
-  die "$vector->{name}\n" unless main::verify_grant($grant, @$args)
-    && !main::verify_grant($grant, "wrong", $ent->{application_id}, $vector->{public_key}, $now)
-    && !main::verify_grant($grant, $ent->{nonce}, "pub_other_app", $vector->{public_key}, $now)
-    && !main::verify_grant({ entitlement => $ent, signature => $vector->{signature} . "AA" }, @$args)
-    && !main::verify_grant($grant, $ent->{nonce}, $ent->{application_id}, $vector->{public_key}, main::instant_ms($ent->{expires_at}))
-    && !main::verify_grant({ entitlement => { %$ent, device_id => "other" }, signature => $vector->{signature} }, @$args)
-    && !main::verify_grant({ entitlement => { %$ent, status => "revoked" }, signature => $vector->{signature} }, @$args);
-}
-print "Perl vectors passed\n";
+my $body = KernAuth::check_body("pub_harbor_desktop", "KERN-ABCD-EFGH-IJKL-MNOP");
+die "body\n" if $body->{protocol_version} != 1 || $body->{public_app_id} ne "pub_harbor_desktop"
+  || $body->{client_version} ne "1.0.0" || $body->{license_key} ne "KERN-ABCD-EFGH-IJKL-MNOP";
+die "message\n" if KernAuth::api_message({ error => { message => "Update required" } }, "no") ne "Update required";
+die "fallback\n" if KernAuth::api_message({}, "no") ne "no";
+print "Perl check passed\n";
