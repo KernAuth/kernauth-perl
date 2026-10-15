@@ -7,7 +7,6 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 
 our $API = "https://api.kernauth.com";
 our $APP_ID = "__PUBLIC_APP_ID__";
-our $KEY_ID = "__KEY_ID__";
 our $PUBLIC_KEY = "__PUBLIC_KEY__";
 our @FIELDS = qw(protocol_version entitlement_id application_id license_id status features device_id issued_at expires_at server_time nonce key_id);
 
@@ -16,11 +15,10 @@ use strict;
 use warnings;
 
 sub new {
-  my ($class, $api, $app_id, $key_id, $public_key) = @_;
+  my ($class, $api, $app_id, $public_key) = @_;
   return bless {
     api => $api // $main::API,
     app_id => $app_id // $main::APP_ID,
-    key_id => $key_id // $main::KEY_ID,
     public_key => $public_key // $main::PUBLIC_KEY,
     success => 0,
     message => "",
@@ -36,7 +34,7 @@ sub validate {
 sub call {
   my ($self, $mode, $license, $installation, $ok_message) = @_;
   my $entitlement = eval {
-    main::request($mode, $license, $installation, $self->{api}, $self->{app_id}, $self->{key_id}, $self->{public_key});
+    main::request($mode, $license, $installation, $self->{api}, $self->{app_id}, $self->{public_key});
   };
   if ($@) {
     $self->{success} = 0;
@@ -105,16 +103,15 @@ sub instant_ms {
 }
 
 sub verify_grant {
-  my ($grant, $nonce, $app_id, $key_id, $public_key, $now_ms) = @_;
+  my ($grant, $nonce, $app_id, $public_key, $now_ms) = @_;
   $app_id //= $APP_ID;
-  $key_id //= $KEY_ID;
   $public_key //= $PUBLIC_KEY;
   $now_ms //= int(time() * 1000);
   my $ok = eval {
     my $ent = $grant->{entitlement};
     my $expiry = instant_ms($ent->{expires_at});
     return 0 if $ent->{protocol_version} != 1 || $ent->{nonce} ne $nonce || $ent->{application_id} ne $app_id
-      || $ent->{key_id} ne $key_id || $ent->{status} ne "active" || !defined $expiry || $expiry <= $now_ms;
+      || $ent->{status} ne "active" || !defined $expiry || $expiry <= $now_ms;
     my $raw = strict_b64($public_key);
     my $signature = strict_b64($grant->{signature});
     return 0 if !defined $raw || length($raw) != 32 || !defined $signature || length($signature) != 64;
@@ -143,7 +140,7 @@ sub ed25519_verify {
 }
 
 sub request {
-  my ($mode, $license, $installation, $api, $app_id, $key_id, $public_key) = @_;
+  my ($mode, $license, $installation, $api, $app_id, $public_key) = @_;
   open my $random, "<", "/dev/urandom" or die "urandom\n";
   read $random, my $bytes, 24 or die "urandom\n";
   close $random;
@@ -169,7 +166,7 @@ sub request {
   my $status = $1;
   die "$mode failed ($status)\n" if $status !~ /\A2/;
   my $grant = JSON::PP->new->utf8(0)->decode($raw);
-  die "Invalid or expired signed entitlement\n" unless verify_grant($grant, $nonce, $app_id, $key_id, $public_key);
+  die "Invalid or expired signed entitlement\n" unless verify_grant($grant, $nonce, $app_id, $public_key);
   return $grant->{entitlement};
 }
 

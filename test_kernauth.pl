@@ -15,13 +15,12 @@ for my $vector (@{$fixture->{vectors}}) {
   my $grant = { entitlement => $ent, signature => $vector->{signature} };
   my $canonical = main::canonical($ent);
   die "$vector->{name} canonical\n" if $canonical ne $vector->{canonical};
-  my $args = [$ent->{nonce}, $ent->{application_id}, $ent->{key_id}, $vector->{public_key}, $now];
+  my $args = [$ent->{nonce}, $ent->{application_id}, $vector->{public_key}, $now];
   die "$vector->{name}\n" unless main::verify_grant($grant, @$args)
-    && !main::verify_grant($grant, "wrong", $ent->{application_id}, $ent->{key_id}, $vector->{public_key}, $now)
-    && !main::verify_grant($grant, $ent->{nonce}, "pub_other_app", $ent->{key_id}, $vector->{public_key}, $now)
-    && !main::verify_grant($grant, $ent->{nonce}, $ent->{application_id}, "wrong-key", $vector->{public_key}, $now)
+    && !main::verify_grant($grant, "wrong", $ent->{application_id}, $vector->{public_key}, $now)
+    && !main::verify_grant($grant, $ent->{nonce}, "pub_other_app", $vector->{public_key}, $now)
     && !main::verify_grant({ entitlement => $ent, signature => $vector->{signature} . "AA" }, @$args)
-    && !main::verify_grant($grant, $ent->{nonce}, $ent->{application_id}, $ent->{key_id}, $vector->{public_key}, main::instant_ms($ent->{expires_at}))
+    && !main::verify_grant($grant, $ent->{nonce}, $ent->{application_id}, $vector->{public_key}, main::instant_ms($ent->{expires_at}))
     && !main::verify_grant({ entitlement => { %$ent, device_id => "other" }, signature => $vector->{signature} }, @$args)
     && !main::verify_grant({ entitlement => { %$ent, status => "revoked" }, signature => $vector->{signature} }, @$args);
 }
