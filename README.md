@@ -6,6 +6,7 @@ Paste the public app ID from Developers into `main.pl`. Perl 5.14 or newer. The 
 
 ```perl
 my $app = KernAuth->new("https://api.kernauth.com", "__PUBLIC_APP_ID__");
+# KernAuth->new(api, app_id, "1.0.0") when Require this version is on
 ```
 
 Type the license at the prompt. `KERN_LICENSE_KEY` skips the prompt. The program checks that the key is valid and prints when it expires. It does not save a computer.

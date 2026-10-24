@@ -4,11 +4,12 @@ use warnings;
 use JSON::PP;
 
 sub check_body {
-  my ($app_id, $license_key) = @_;
+  my ($app_id, $license_key, $version) = @_;
+  $version = "1.0.0" if !defined $version || $version eq "";
   return {
     protocol_version => 1,
     public_app_id => $app_id,
-    client_version => "1.0.0",
+    client_version => $version,
     license_key => $license_key,
   };
 }
@@ -20,14 +21,15 @@ sub api_message {
 }
 
 sub new {
-  my ($class, $api, $app_id) = @_;
-  return bless { api => $api, app_id => $app_id, message => "", expires_at => undef }, $class;
+  my ($class, $api, $app_id, $version) = @_;
+  $version = "1.0.0" if !defined $version || $version eq "";
+  return bless { api => $api, app_id => $app_id, version => $version, message => "", expires_at => undef }, $class;
 }
 
 sub check {
   my ($self, $license_key) = @_;
   my $json = JSON::PP->new->utf8->canonical;
-  my $body = $json->encode(check_body($self->{app_id}, $license_key));
+  my $body = $json->encode(check_body($self->{app_id}, $license_key, $self->{version}));
   my $command = "curl -sS -m 10 -w '\\n%{http_code}' -H 'content-type: application/json' -d " . quotemeta_shell($body) . " " . quotemeta_shell("$self->{api}/v1/client/check");
   my $raw = `$command`;
   my ($payload_raw, $status) = $raw =~ /^(.*)\n(\d{3})\s*$/s;
